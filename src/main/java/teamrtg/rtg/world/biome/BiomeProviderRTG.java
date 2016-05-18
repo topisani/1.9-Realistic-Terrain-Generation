@@ -12,7 +12,6 @@ import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraft.world.biome.BiomeProvider;
 import net.minecraft.world.gen.layer.GenLayer;
 import net.minecraft.world.gen.layer.IntCache;
-import teamrtg.rtg.api.world.biome.RealisticBiomeBase;
 import teamrtg.rtg.api.mods.Mods;
 import teamrtg.rtg.api.util.BiomeUtils;
 import teamrtg.rtg.api.util.LimitedMap;
@@ -22,8 +21,9 @@ import teamrtg.rtg.api.util.noise.CellNoise;
 import teamrtg.rtg.api.util.noise.OpenSimplexNoise;
 import teamrtg.rtg.api.util.noise.SimplexCellularNoise;
 import teamrtg.rtg.api.util.noise.SimplexOctave;
+import teamrtg.rtg.api.world.biome.IWorldFeature;
+import teamrtg.rtg.api.world.biome.RTGBiomeBase;
 import teamrtg.rtg.world.gen.ChunkProviderRTG;
-import teamrtg.rtg.api.world.gen.RealisticBiomeGenerator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,7 +49,7 @@ public class BiomeProviderRTG extends BiomeProvider {
     private CellNoise cell;
     private SimplexCellularNoise simplexCell;
     private float[] borderNoise;
-    private TLongObjectHashMap<RealisticBiomeBase> biomeDataMap = new TLongObjectHashMap<RealisticBiomeBase>();
+    private TLongObjectHashMap<RTGBiomeBase> biomeDataMap = new TLongObjectHashMap<RTGBiomeBase>();
     private BiomeCache biomeCache;
     private double riverValleyLevel = 60.0 / 450.0;
     private float riverSeparation = 1875;
@@ -103,24 +103,30 @@ public class BiomeProviderRTG extends BiomeProvider {
 
         for (int i = 0; i < par3; i++) {
             for (int j = 0; j < par4; j++) {
-                d[i * par3 + j] = BiomeUtils.getId(getPreRepair(par1 + i, par2 + j));
+                d[i * par3 + j] = BiomeUtils.getId(getBiomePreRepair(par1 + i, par2 + j));
             }
         }
         return d;
     }
 
-    public BiomeGenBase getPreRepair(int x, int z) {
+    public BiomeGenBase getBiomePreRepair(int x, int z) {
         BiomeGenBase result;
         result = this.biomeCache.getBiomeCacheBlock(x, z).getBiomeGenAt(x, z);
         return result;
+    }
+
+    public IWorldFeature getWorldFeaturesPreRepair(int x, int z) {
+        BiomeGenBase result;
+        result = this.biomeCache.getBiomeCacheBlock(x, z).getBiomeGenAt(x, z);
+        return RTGBiomeBase.forBiome(result);
     }
 
     public BiomeGenBase getBiomeGenAt(int x, int z) {
         return BiomeGenBase.getBiomeForId(getBiomes(globalToChunk(x), globalToChunk(z))[globalToIndex(x, z)]);
     }
 
-    public RealisticBiomeBase getRealisticAt(int bx, int bz) {
-        return RealisticBiomeBase.forBiome(getBiomeGenAt(bx, bz));
+    public RTGBiomeBase getRealisticAt(int bx, int bz) {
+        return RTGBiomeBase.forBiome(getBiomeGenAt(bx, bz));
     }
 
     public List getBiomesToSpawnIn() {
@@ -242,16 +248,6 @@ public class BiomeProviderRTG extends BiomeProvider {
     @Override
     public void cleanupCache() {
         this.biomeCache.cleanupCache();
-    }
-
-    public float getNoiseAt(int x, int y) {
-
-        float river = getRiverStrength(x, y) + 1f;
-        if (river < 0.5f) {
-            return 59f;
-        }
-
-        return RealisticBiomeGenerator.forBiome(getBiomeGenAt(x, y)).rNoise(chunkProvider.rtgWorld, x, y, 1f, river);
     }
 
     public float getRiverStrength(int x, int y) {

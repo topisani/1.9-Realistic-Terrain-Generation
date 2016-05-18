@@ -5,7 +5,6 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.EnumCreatureType;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.ChunkCoordIntPair;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldEntitySpawner;
@@ -25,14 +24,16 @@ import net.minecraftforge.event.terraingen.DecorateBiomeEvent;
 import net.minecraftforge.event.terraingen.PopulateChunkEvent;
 import net.minecraftforge.event.terraingen.TerrainGen;
 import net.minecraftforge.fml.common.eventhandler.Event.Result;
+import teamrtg.rtg.api.RTGAPI;
 import teamrtg.rtg.api.mods.Mods;
 import teamrtg.rtg.api.util.BiomeUtils;
 import teamrtg.rtg.api.util.PlaneLocation;
 import teamrtg.rtg.api.util.math.CanyonColour;
 import teamrtg.rtg.api.util.math.MathUtils;
 import teamrtg.rtg.api.world.RTGWorld;
-import teamrtg.rtg.api.world.biome.RealisticBiomeBase;
-import teamrtg.rtg.api.world.gen.RealisticBiomeGenerator;
+import teamrtg.rtg.api.world.biome.IWorldFeature;
+import teamrtg.rtg.api.world.biome.RTGBiomeBase;
+import teamrtg.rtg.api.world.gen.IWorldFeatureGenerator;
 import teamrtg.rtg.world.biome.BiomeAnalyzer;
 import teamrtg.rtg.world.biome.BiomeProviderRTG;
 
@@ -76,19 +77,9 @@ public class ChunkProviderRTG implements IChunkGenerator {
     private final boolean mapFeaturesEnabled;
     private final int worldHeight;
     private final int sampleArraySize;
-    private final int parabolicSize;
-    private final int parabolicArraySize;
-    private final float[] parabolicField;
     private final BiomeAnalyzer analyzer;
     private final IBlockState bedrockBlock = Mods.RTG.config.BEDROCK_BLOCK.get();
     private BiomeProviderRTG bprv;
-    private RealisticBiomeBase[] biomesForGeneration;
-    private BiomeGenBase[] baseBiomesList;
-    private int[] biomeData;
-    private float parabolicFieldTotal;
-    private float[][] hugeRender;
-    private float[][] smallRender;
-    private float[] testHeight;
     private float[] borderNoise;
     private long worldSeed;
 
@@ -132,27 +123,8 @@ public class ChunkProviderRTG implements IChunkGenerator {
         CanyonColour.init();
 
         sampleArraySize = sampleSize * 2 + 5;
-
-        parabolicSize = sampleSize;
-        parabolicArraySize = parabolicSize * 2 + 1;
-        parabolicField = new float[parabolicArraySize * parabolicArraySize];
-        for (int j = -parabolicSize; j <= parabolicSize; ++j) {
-            for (int k = -parabolicSize; k <= parabolicSize; ++k) {
-                float f = 0.445f / MathHelper.sqrt_float((float) (j * j + k * k) + 0.3F);
-                parabolicField[j + parabolicSize + (k + parabolicSize) * parabolicArraySize] = f;
-                parabolicFieldTotal += f;
-            }
-        }
-
-        baseBiomesList = new BiomeGenBase[256];
-        biomeData = new int[sampleArraySize * sampleArraySize];
-        hugeRender = new float[81][256];
-        smallRender = new float[625][256];
-        testHeight = new float[256];
-        borderNoise = new float[256];
-
-        //aic = new AICWrapper();
-        //isAICExtendingBiomeIdsLimit = aic.isAICExtendingBiomeIdsLimit();
+        borderNoise = new float[RTGAPI.WORLD_FEATURES.size()];
+        RTGAPI.populateGeneratables();
     }
 
     /**
@@ -169,7 +141,7 @@ public class ChunkProviderRTG implements IChunkGenerator {
         rand.setSeed((long) cx * 0x4f9939f508L + (long) cz * 0x1ef1565bd5L);
         ChunkPrimer primer = new ChunkPrimer();
         BiomeGenBase[] baseBiomes = new BiomeGenBase[256];
-        RealisticBiomeBase[] jitteredBiomes = new RealisticBiomeBase[256];
+        RTGBiomeBase[] jitteredBiomes = new RTGBiomeBase[256];
 
         float[] noise = bprv.getHeights(cx, cz);
 
@@ -178,7 +150,7 @@ public class ChunkProviderRTG implements IChunkGenerator {
             baseBiomes[k] = BiomeGenBase.getBiomeForId(bprv.getBiomes(cx, cz)[k]);
         }
 
-        RealisticBiomeBase jittered, actual;
+        RTGBiomeBase jittered, actual;
         for (int i = 0; i < 16; i++) {
             for (int j = 0; j < 16; j++) {
                 rtgWorld.simplex.evaluateNoise(cx * 16 + i, cz * 16 + j, rtgWorld.surfaceJitter);
@@ -199,7 +171,7 @@ public class ChunkProviderRTG implements IChunkGenerator {
 
         generateTerrain(primer, noise);
 
-        replaceBlocksForBiome(cx, cz, primer, jitteredBiomes, baseBiomes, noise);
+        generateSurfaces(cx, cz, primer, jitteredBiomes, baseBiomes, noise);
 
         caveGenerator.generate(world, cx, cz, primer);
         ravineGenerator.generate(world, cx, cz, primer);
@@ -277,29 +249,22 @@ public class ChunkProviderRTG implements IChunkGenerator {
         }
     }
 
-    private void replaceBlocksForBiome(int cx, int cz, ChunkPrimer primer, RealisticBiomeBase[] biomes, BiomeGenBase[] base, float[] n) {
+    private void generateSurfaces(int cx, int cz, ChunkPrimer primer, IWorldFeature[] iWorldFeatures, BiomeGenBase[] base, float[] n) {
         ChunkGeneratorEvent.ReplaceBiomeBlocks event = new ChunkGeneratorEvent.ReplaceBiomeBlocks(this, cx, cz, primer, world);
         MinecraftForge.EVENT_BUS.post(event);
         if (event.getResult() == Result.DENY) return;
         int i, j, h, depth;
         float river;
-        RealisticBiomeGenerator generator;
+        IWorldFeatureGenerator generator;
         for (i = 0; i < 16; i++) {
             for (j = 0; j < 16; j++) {
 
-                RealisticBiomeBase biome = biomes[i * 16 + j];
+                IWorldFeature iWorldFeature = iWorldFeatures[i * 16 + j];
 
-                if (rtgWorld.biomeFaker.isFakeBiome(biome.getID())) {
-                    rtgWorld.biomeFaker.fakeSurface(cx * 16 + i, cz * 16 + j, primer, biome.getBiome());
-                } else {
-
-                    river = -bprv.getRiverStrength(cx * 16 + i, cz * 16 + j);
-                    depth = -1;
-                    generator = RealisticBiomeGenerator.forBiome(biome.getBiome());
-                    for (int by = 255; by > -1; by--) {
-                        generator.paintSurface(primer, cx * 16 + i, by, cz * 16 + j, depth, n, river, rtgWorld);
-                    }
-                }
+                river = -bprv.getRiverStrength(cx * 16 + i, cz * 16 + j);
+                depth = -1;
+                generator = iWorldFeature.getGenerator();
+                generator.paintSurface(primer, cx * 16 + i, cz * 16 + j, depth, n, river, rtgWorld);
 
                 int rough;
                 int flatBedrockLayers = Mods.RTG.config.FLAT_BEDROCK_LAYERS.get();
@@ -340,7 +305,7 @@ public class ChunkProviderRTG implements IChunkGenerator {
 
         int worldX = x * 16;
         int worldZ = z * 16;
-        RealisticBiomeBase biome = bprv.getRealisticAt(worldX + 16, worldZ + 16);
+        IWorldFeature iWorldFeature = bprv.getRealisticAt(worldX + 16, worldZ + 16);
         this.rand.setSeed(this.world.getSeed());
         long i1 = this.rand.nextLong() / 2L * 2L + 1L;
         long j1 = this.rand.nextLong() / 2L * 2L + 1L;
@@ -385,7 +350,9 @@ public class ChunkProviderRTG implements IChunkGenerator {
             }
         }
 
-        RealisticBiomeGenerator.forBiome(biome.getBiome()).populatePreDecorate(this, world, rand, x, z, flag);
+        if (iWorldFeature instanceof RTGBiomeBase) {
+            ((RTGBiomeBase) iWorldFeature).getGenerator().populatePreDecorate(this, world, rand, x, z, flag);
+        }
 
         /*
          * What is this doing? And why does it need to be done here? - Pink
@@ -396,7 +363,7 @@ public class ChunkProviderRTG implements IChunkGenerator {
         for (int bx = -4; bx <= 4; bx++) {
 
             for (int by = -4; by <= 4; by++) {
-                borderNoise[BiomeUtils.getId(bprv.getBiomeGenAt(worldX + adjust + bx * 4, worldZ + adjust + by * 4))] += 0.01234569f;
+                borderNoise[RTGAPI.WORLD_FEATURES.indexOf(bprv.getRealisticAt(worldX + adjust + bx * 4, worldZ + adjust + by * 4))] += 0.01234569f;
             }
         }
 
@@ -412,39 +379,26 @@ public class ChunkProviderRTG implements IChunkGenerator {
         float river = -bprv.getRiverStrength(worldX + 16, worldZ + 16);
 
         //Border noise. (Does this have to be done here? - Pink)
-        RealisticBiomeBase realisticBiome;
+        IWorldFeature iWorldFeature1;
         float snow = 0f;
 
-        for (int bn = 0; bn < 256; bn++) {
-            if (borderNoise[bn] > 0f) {
-                if (borderNoise[bn] >= 1f) {
-                    borderNoise[bn] = 1f;
+        for (int i = 0; i < RTGAPI.WORLD_FEATURES.size(); i++) {
+            if (borderNoise[i] > 0f) {
+                if (borderNoise[i] >= 1f) {
+                    borderNoise[i] = 1f;
                 }
-                realisticBiome = RealisticBiomeBase.forBiome(bn);
+                iWorldFeature1 = RTGAPI.WORLD_FEATURES.get(i);
 
-                /*
-                 * When decorating the biome, we need to look at the biome configs to see if RTG is allowed to decorate it.
-                 * If the biome configs don't allow it, then we try to let the base biome decorate itself.
-                 * However, there are some mod biomes that crash when they try to decorate themselves,
-                 * so that's what the try/catch is for. If it fails, then it falls back to RTG decoration.
-                 * TODO: Is there a more efficient way to do this? - Pink
-                 */
-                if (Mods.RTG.config.ENABLE_RTG_BIOME_DECORATIONS.get() && realisticBiome.getConfig().USE_RTG_DECORATIONS.get()) {
-                    RealisticBiomeGenerator.forBiome(realisticBiome.getBiome()).decorate(rtgWorld, rand, worldX, worldZ, borderNoise[bn], river);
-                } else {
-                    try {
-                        realisticBiome.getBiome().decorate(this.world, rand, worldCoords);
-                    } catch (Exception e) {
-                        RealisticBiomeGenerator.forBiome(realisticBiome.getBiome()).decorate(rtgWorld, rand, worldX, worldZ, borderNoise[bn], river);
+                iWorldFeature1.getGenerator().decorate(rtgWorld, rand, worldX, worldZ, borderNoise[i], river);
+
+                if (iWorldFeature1 instanceof RTGBiomeBase) {
+                    if (((RTGBiomeBase) iWorldFeature1).getBiome().getTemperature() < 0.15f) {
+                        snow -= 0.6f * borderNoise[i];
+                    } else {
+                        snow += 0.6f * borderNoise[i];
                     }
                 }
-
-                if (realisticBiome.getBiome().getTemperature() < 0.15f) {
-                    snow -= 0.6f * borderNoise[bn];
-                } else {
-                    snow += 0.6f * borderNoise[bn];
-                }
-                borderNoise[bn] = 0f;
+                borderNoise[i] = 0f;
             }
         }
 
@@ -491,7 +445,7 @@ public class ChunkProviderRTG implements IChunkGenerator {
 
                     i2 = this.world.getPrecipitationHeight(bp.set(worldX + k1, 0, worldZ + l1)).getY();
 
-                    if (this.world.canBlockFreezeNoWater(bp.set(k1 + worldX, i2 - 1, l1 + worldZ))) {
+                    if (this.world.canBlockFreezeWater(bp.set(k1 + worldX, i2 - 1, l1 + worldZ))) {
                         this.world.setBlockState(bp.set(k1 + worldX, i2 - 1, l1 + worldZ), Blocks.ICE.getDefaultState(), 2);
                     }
 
@@ -587,23 +541,24 @@ public class ChunkProviderRTG implements IChunkGenerator {
 
     public void requestChunk(int cx, int cz) {
         float[] noise;
-        RealisticBiomeBase[] biomes = new RealisticBiomeBase[256];
+        RTGBiomeBase[] biomes = new RTGBiomeBase[256];
         int[] biomeIds = new int[256];
+        IWorldFeature[] worldFeatures = new IWorldFeature[sampleArraySize * sampleArraySize];
         int[] biomeData = new int[sampleArraySize * sampleArraySize];
         float[] riverVals = new float[256];
 
         int k;
 
-        noise = getNewerNoise(bprv, cx * 16, cz * 16, biomes, biomeData, riverVals);
+        noise = getNewerNoise(bprv, cx * 16, cz * 16, worldFeatures, biomeData, riverVals);
 
-        //fill biomes array with biomeData
+        //fill biomes array with worldFeatures
         for (int i = 0; i < 16; i++) {
             for (int j = 0; j < 16; j++) {
-                biomes[i * 16 + j] = RealisticBiomeBase.forBiome(BiomeUtils.getId(bprv.getPreRepair(cx + i, cz + j)));
+                biomes[i * 16 + j] = RTGBiomeBase.forBiome(bprv.getBiomePreRepair(cx + i, cz + j));
             }
         }
 
-        //fill with biomeData
+        //fill with worldFeatures
         int[] biomeIndices = bprv.getBiomesGens(cx * 16, cz * 16, 16, 16);
 
 
@@ -618,7 +573,7 @@ public class ChunkProviderRTG implements IChunkGenerator {
         bprv.heights.put(loc, noise);
     }
 
-    private float[] getNewerNoise(BiomeProviderRTG cmr, int x, int y, RealisticBiomeBase biomes[], int[] biomeData, float[] riverVals) {
+    private float[] getNewerNoise(BiomeProviderRTG bprv, int x, int y, IWorldFeature[] worldFeatures, int[] biomes, float[] riverVals) {
 
         float[] testHeight;
         float[] biomesGeneratedInChunk;
@@ -629,11 +584,12 @@ public class ChunkProviderRTG implements IChunkGenerator {
         // get area biome map
         for (int i = -sampleSize; i < sampleSize + 5; i++) {
             for (int j = -sampleSize; j < sampleSize + 5; j++) {
-                biomeData[(i + sampleSize) * sampleArraySize + (j + sampleSize)] = BiomeUtils.getId(cmr.getPreRepair(x + ((i * 8)), y + ((j * 8))));
+                worldFeatures[(i + sampleSize) * sampleArraySize + (j + sampleSize)] = bprv.getWorldFeaturesPreRepair(x + ((i * 8)), y + ((j * 8)));
+                biomes[(i + sampleSize) * sampleArraySize + (j + sampleSize)] = BiomeUtils.getId(bprv.getBiomePreRepair(x + ((i * 8)), y + ((j * 8))));
             }
         }
         float river;
-        float[] weightedBiomes = new float[256];
+        float[] weightedWorldFeatures = new float[RTGAPI.WORLD_FEATURES.size()];
 
         int adjustment = 4;// this should actually vary with sampleSize
         // fill the old smallRender
@@ -655,33 +611,32 @@ public class ChunkProviderRTG implements IChunkGenerator {
                         float weight = 1f - distance / limit;
                         if (weight > 0) {
                             totalWeight += weight;
-                            weightedBiomes[biomeData[mapX * sampleArraySize + mapZ]] += weight;
+                            weightedWorldFeatures[RTGAPI.WORLD_FEATURES.indexOf(worldFeatures[mapX * sampleArraySize + mapZ])] += weight;
                         }
                     }
                 }
                 // normalize biome weights
-                for (int biomeIndex = 0; biomeIndex < weightedBiomes.length; biomeIndex++) {
-                    weightedBiomes[biomeIndex] /= totalWeight;
+                for (int wfIndex = 0; wfIndex < weightedWorldFeatures.length; wfIndex++) {
+                    weightedWorldFeatures[wfIndex] /= totalWeight;
                 }
                 testHeight[i * 16 + j] = 0f;
 
-                river = cmr.getRiverStrength(x + i, y + j);
+                river = bprv.getRiverStrength(x + i, y + j);
                 riverVals[i * 16 + j] = -river;
                 float totalBorder = 0f;
 
-                for (int k = 0; k < 256; k++) {
-
-                    if (weightedBiomes[k] > 0f) {
+                for (int i1 = 0; i1 < RTGAPI.WORLD_FEATURES.size(); i1++) {
+                    IWorldFeature worldFeature = RTGAPI.WORLD_FEATURES.get(i1);
+                    if (weightedWorldFeatures[i] > 0f) {
 
                         if (locationIndex == centerLocationIndex) {
-                            biomesGeneratedInChunk[k] = weightedBiomes[k];
+                            biomesGeneratedInChunk[i] = weightedWorldFeatures[i];
                         }
 
-                        totalBorder += weightedBiomes[k];
-                        testHeight[i * 16 + j] += RealisticBiomeGenerator.forBiome(k).rNoise(rtgWorld, x + i, y + j, weightedBiomes[k], river + 1f) * weightedBiomes[k];
+                        totalBorder += weightedWorldFeatures[i];
+                        testHeight[i * 16 + j] += worldFeature.getGenerator().terrainHeight(rtgWorld, x + i, y + j, weightedWorldFeatures[i], river + 1f) * weightedWorldFeatures[i];
                         // 0 for the next column
-                        weightedBiomes[k] = 0f;
-
+                        weightedWorldFeatures[i] = 0f;
                     }
                 }
                 if (totalBorder < .999 || totalBorder > 1.001) throw new RuntimeException("" + totalBorder);

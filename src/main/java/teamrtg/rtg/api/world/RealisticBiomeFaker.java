@@ -11,7 +11,8 @@ import teamrtg.rtg.api.util.BiomeUtils;
 import teamrtg.rtg.api.util.LimitedMap;
 import teamrtg.rtg.api.util.PlaneLocation;
 import teamrtg.rtg.api.util.debug.Logger;
-import teamrtg.rtg.api.world.gen.RealisticBiomeGenerator;
+import teamrtg.rtg.api.world.biome.RTGBiomeBase;
+import teamrtg.rtg.api.world.gen.RTGBiomeGenerator;
 
 import java.lang.reflect.Field;
 
@@ -99,9 +100,9 @@ public class RealisticBiomeFaker {
         for (BiomeGenBase biome : b) {
             if (biome != null) {
                 try {
-                    RealisticBiomeGenerator.getRealistic(BiomeGenBase.getIdForBiome(biome));
+                    RTGBiomeBase.forBiome(biome);
                 } catch (Exception e) {
-                    new RealisticBiomeGenerator(new FakedRealisticBiome(Mods.RTG, biome));
+                    new RTGBiomeGenerator(new FakedRTGBiome(Mods.RTG, biome));
                     fakeBiomes[BiomeGenBase.getIdForBiome(biome)] = true;
                 }
             }

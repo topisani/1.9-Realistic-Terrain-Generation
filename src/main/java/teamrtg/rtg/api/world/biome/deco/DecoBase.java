@@ -1,7 +1,7 @@
 package teamrtg.rtg.api.world.biome.deco;
 
 import teamrtg.rtg.api.world.RTGWorld;
-import teamrtg.rtg.api.world.gen.IMapGenGenerator;
+import teamrtg.rtg.api.world.gen.IWorldFeatureGenerator;
 
 import java.util.ArrayList;
 import java.util.Random;
@@ -53,7 +53,7 @@ public abstract class DecoBase {
      * @param strength
      * @param river
      */
-    public final boolean preGenerate(RTGWorld rtgWorld, Random rand, int chunkX, int chunkY, float strength, float river, IMapGenGenerator mapGenGenerator) {
+    public final boolean preGenerate(RTGWorld rtgWorld, Random rand, int chunkX, int chunkY, float strength, float river, IWorldFeatureGenerator mapGenGenerator) {
         if (this.checkRiver) {
 
             if (river > this.maxRiver || river < this.minRiver) {
@@ -76,7 +76,7 @@ public abstract class DecoBase {
      * @param river
      * @param mapGenGenerator
      */
-    public abstract void generate(RTGWorld rtgWorld, Random rand, int chunkX, int chunkY, float strength, float river, IMapGenGenerator mapGenGenerator);
+    public abstract void generate(RTGWorld rtgWorld, Random rand, int chunkX, int chunkY, float strength, float river, IWorldFeatureGenerator mapGenGenerator);
 
     /**
      * Adds one or more deco types.

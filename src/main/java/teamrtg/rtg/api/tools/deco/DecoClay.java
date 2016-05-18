@@ -6,7 +6,7 @@ import net.minecraftforge.event.terraingen.TerrainGen;
 import teamrtg.rtg.api.tools.feature.WorldGenClay;
 import teamrtg.rtg.api.world.RTGWorld;
 import teamrtg.rtg.api.world.biome.deco.DecoBase;
-import teamrtg.rtg.api.world.gen.IMapGenGenerator;
+import teamrtg.rtg.api.world.gen.IWorldFeatureGenerator;
 
 import java.util.Random;
 
@@ -35,7 +35,7 @@ public class DecoClay extends DecoBase {
      * @param mapGenGenerator
      */
     @Override
-    public void generate(RTGWorld rtgWorld, Random rand, int chunkX, int chunkY, float strength, float river, IMapGenGenerator mapGenGenerator) {
+    public void generate(RTGWorld rtgWorld, Random rand, int chunkX, int chunkY, float strength, float river, IWorldFeatureGenerator mapGenGenerator) {
         if (TerrainGen.decorate(rtgWorld.world, rand, new BlockPos(chunkX * 16, 0, chunkY * 16), CLAY)) {
 
             if (river > 0.85f) {

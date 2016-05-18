@@ -1,7 +1,8 @@
 package teamrtg.rtg.api.mods;
 
-import teamrtg.rtg.api.world.biome.RealisticBiomeBase;
-import teamrtg.rtg.api.world.gen.RealisticBiomeGenerator;
+import teamrtg.rtg.api.RTGAPI;
+import teamrtg.rtg.api.util.BiomeUtils;
+import teamrtg.rtg.api.world.biome.RTGBiomeBase;
 
 import java.util.ArrayList;
 
@@ -11,17 +12,17 @@ import java.util.ArrayList;
  */
 public class ModBiomes {
 
-    private ArrayList<RealisticBiomeBase> biomes = new ArrayList<>();
+    private ArrayList<RTGBiomeBase> biomes = new ArrayList<>();
 
     public void initBiomes() {}
 
-    protected RealisticBiomeBase addBiome(RealisticBiomeBase biome) {
+    protected RTGBiomeBase addBiome(RTGBiomeBase biome) {
         biomes.add(biome);
-        new RealisticBiomeGenerator(biome);
+        RTGAPI.RTG_BIOMES.register(biome.getID(), BiomeUtils.getLocForBiome(biome.getBiome()), biome);
         return biome;
     }
 
-    public RealisticBiomeBase[] getBiomes() {
-        return biomes.toArray(new RealisticBiomeBase[biomes.size()]);
+    public RTGBiomeBase[] getBiomes() {
+        return biomes.toArray(new RTGBiomeBase[biomes.size()]);
     }
 }
